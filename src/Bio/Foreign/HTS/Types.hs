@@ -2,37 +2,43 @@
 {-# LANGUAGE QuasiQuotes       #-}
 {-# LANGUAGE TemplateHaskell   #-}
 
-module Bio.Data.Types
+module Bio.Foreign.HTS.Types
     ( htsCtx
-    , BamHandle
-    , BamHeader
+    , BamFileHandle(..)
+    , FileHeader(..)
+    , BamHdr
+    , HTSFile
     , Bam
+    , Bam1'
     , Sam(..)
     , showSam
     ) where
 
+import qualified Data.ByteString              as BS
 import qualified Data.ByteString.Char8        as B
-import qualified Data.ByteString as BS
 import           Data.ByteString.Lex.Integral
 import           Data.Int
 import qualified Data.Map                     as M
-import           Data.Maybe                   (fromMaybe, fromJust)
+import           Data.Maybe                   (fromJust, fromMaybe)
 import           Data.Monoid                  ((<>))
 import           Data.Word
 import           Foreign.C.String
 import           Foreign.C.Types
+import           Foreign.ForeignPtr
 import           Foreign.Ptr
 import qualified Language.C.Inline            as C
 import qualified Language.C.Inline.Context    as C
 import qualified Language.C.Types             as C
 import qualified Language.Haskell.TH          as TH
 
-data SamFile
-type BamHandle = Ptr SamFile
-data BamHdr
-type BamHeader = Ptr BamHdr
 data Bam1'
-type Bam = Ptr Bam1'
+type Bam = ForeignPtr Bam1'
+data BamHdr
+data FileHeader = Empty
+                | BamHeader (Ptr BamHdr)
+
+data HTSFile
+newtype BamFileHandle = BamFileHandle (Ptr HTSFile)
 
 htsCtx :: C.Context
 htsCtx = mempty
@@ -41,7 +47,7 @@ htsCtx = mempty
 
 htsTypesTable :: M.Map C.TypeSpecifier TH.TypeQ
 htsTypesTable = M.fromList
-   [ (C.TypeName "samFile", [t| SamFile |])
+   [ (C.TypeName "htsFile", [t| HTSFile |])
    , (C.TypeName "bam_hdr_t", [t| BamHdr |])
    , (C.TypeName "bam1_t", [t| Bam1' |])
    ]

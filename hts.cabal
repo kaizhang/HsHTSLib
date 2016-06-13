@@ -17,20 +17,22 @@ cabal-version:       >=1.10
 
 library
   exposed-modules:
-    Bio.Data.HTS
-    Bio.Data.Types
+    Bio.Foreign.HTS
+    Bio.Foreign.HTS.Types
 
   build-depends:
       base >=4.8 && <5.0
     , bytestring
     , bytestring-lexing
     , containers
-    , template-haskell
+    , conduit-combinators
     , inline-c
+    , mtl
+    , template-haskell
 
   hs-source-dirs:      src
   c-sources:
-      src/Bio/Data/HTS.c
+      src/Bio/Foreign/HTS.c
 
   extra-libraries:     hts
 
