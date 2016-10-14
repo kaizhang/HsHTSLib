@@ -2,7 +2,7 @@
 {-# LANGUAGE QuasiQuotes       #-}
 {-# LANGUAGE TemplateHaskell   #-}
 
-module Bio.Foreign.HTS.Types
+module Bio.HTS.Types
     ( htsCtx
     , BamFileHandle(..)
     , FileHeader(..)
@@ -20,10 +20,7 @@ import           Data.ByteString.Lex.Integral
 import           Data.Int
 import qualified Data.Map                     as M
 import           Data.Maybe                   (fromJust, fromMaybe)
-import           Data.Monoid                  ((<>))
 import           Data.Word
-import           Foreign.C.String
-import           Foreign.C.Types
 import           Foreign.ForeignPtr
 import           Foreign.Ptr
 import qualified Language.C.Inline            as C
@@ -75,5 +72,5 @@ showSam s = B.intercalate "\t"
     , fromMaybe "*" $ BS.map (+33) <$> samQual s ]
   where
     f = B.concat . concatMap (\(i, x) -> [pack' i, B.singleton x])
-    pack' :: (Show a, Integral a) => a -> B.ByteString
+    pack' :: Integral a => a -> B.ByteString
     pack' = fromJust . packDecimal

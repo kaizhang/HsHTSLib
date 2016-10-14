@@ -2,12 +2,11 @@
 {-# LANGUAGE QuasiQuotes       #-}
 {-# LANGUAGE TemplateHaskell   #-}
 
-module Bio.Foreign.HTS where
+module Bio.HTS where
 -- FIXME: fix memory leaks using withPtr
 
 import           Conduit
 import           Control.Monad
-import Control.Exception (bracket)
 import           Control.Monad.State
 import qualified Data.ByteString.Char8    as B
 import           Data.Int
@@ -18,14 +17,13 @@ import           Foreign.C.Types
 import           Foreign.ForeignPtr
 import           Foreign.Marshal.Array
 import           Foreign.Ptr
-import           Foreign.Storable         (peek)
 import           Language.C.Inline        (baseCtx, bsCtx, context, include,
-                                           withPtr, withPtr_)
+                                           withPtr)
 import qualified Language.C.Inline.Unsafe as CU
 import           System.IO
 import           System.IO.Unsafe         (unsafePerformIO)
 
-import           Bio.Foreign.HTS.Types
+import           Bio.HTS.Types
 
 context (baseCtx <> bsCtx <> htsCtx)
 
@@ -91,19 +89,21 @@ bamRead1 (BamFileHandle h) = do
 foreign import ccall unsafe "&bam_destroy1"
    bamDestory :: FunPtr (Ptr Bam1' -> IO ())
 
+-- | Return the chromosome id.
 getChrId :: Bam -> Int32
 getChrId = unsafePerformIO . flip withForeignPtr fn
   where
     fn b = [CU.exp| int32_t { $(bam1_t* b)->core.tid } |]
 
+-- | Return the chromosome name given the bam file header.
 getChr :: Ptr BamHdr -> Bam -> Maybe B.ByteString
-getChr h b' = unsafePerformIO $ withForeignPtr b' $ \b ->
-    if i < 0 then return Nothing else Just <$> do
-        join $ B.packCString <$>
-            [CU.exp| char* { $(bam_hdr_t* h)->target_name[$(int32_t i)] } |]
+getChr h b' | i < 0 = Nothing
+            | otherwise = Just $ unsafePerformIO $ join $ B.packCString <$>
+                [CU.exp| char* { $(bam_hdr_t* h)->target_name[$(int32_t i)] } |]
   where
     i = getChrId b'
 
+-- | Return the 0-based starting location.
 position :: Bam -> Int32
 position = unsafePerformIO . flip withForeignPtr fn
   where
@@ -117,6 +117,7 @@ endPos = unsafePerformIO . flip withForeignPtr fn
   where
     fn b = [CU.exp| int32_t { bam_endpos($(bam1_t* b)) } |]
 
+-- | Return the query length (read length).
 queryLen :: Bam -> Int32
 queryLen = unsafePerformIO . flip withForeignPtr fn
   where
@@ -130,6 +131,7 @@ isRev = unsafePerformIO . flip withForeignPtr fn
         r <- [CU.exp| int {bam_is_rev($(bam1_t* b)) } |]
         return $ if r == 0 then False else True
 
+-- | Return the flag.
 flag :: Bam -> Word16
 flag = unsafePerformIO . flip withForeignPtr fn
   where
@@ -142,6 +144,7 @@ mapq = unsafePerformIO . flip withForeignPtr fn
 
 
 --int8_t seq_comp_table[16] = { 0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15 };
+-- | Return the DNA sequence.
 getSeq :: Bam -> Maybe B.ByteString
 getSeq = unsafePerformIO . flip withForeignPtr fn
   where
@@ -217,13 +220,11 @@ mateChrId = unsafePerformIO . flip withForeignPtr fn
     fn b = [CU.exp| int32_t { $(bam1_t* b)->core.mtid } |]
 
 mateChr :: Ptr BamHdr -> Bam -> Maybe B.ByteString
-mateChr h b' = unsafePerformIO $ withForeignPtr b' $ \b ->
-    if i < 0 then return Nothing else Just <$> do
-        join $ B.packCString <$>
-            [CU.exp| char* { $(bam_hdr_t* h)->target_name[$(int32_t i)] } |]
+mateChr h b' | i < 0 = Nothing
+             | otherwise = Just $ unsafePerformIO $ join $ B.packCString <$>
+                [CU.exp| char* { $(bam_hdr_t* h)->target_name[$(int32_t i)] } |]
   where
     i = mateChrId b'
-
 
 -- | 0-based
 matePos :: Bam -> Int32
@@ -237,6 +238,7 @@ tLen = unsafePerformIO . flip withForeignPtr fn
     fn b = [CU.exp| int32_t { $(bam1_t* b)->core.isize } |]
 
 
+-- | Convert Bam record to Sam record.
 bamToSam :: Ptr BamHdr -> Bam -> Sam
 bamToSam h b = Sam (qName b) (flag b) (getChr h b) (position b) (mapq b)
     (cigar b) (mateChr h b) (matePos b) (tLen b) (getSeq b) (quality b)
