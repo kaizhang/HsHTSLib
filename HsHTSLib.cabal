@@ -10,8 +10,12 @@ maintainer:          kai@kzhang.org
 copyright:           (c) 2016 Kai Zhang
 category:            Bio
 build-type:          Simple
-extra-source-files:  ChangeLog.md
 cabal-version:       >=1.10
+extra-source-files:
+  ChangeLog.md
+  htslib-1.3.2/*.h
+  htslib-1.3.2/htslib/*.h
+  htslib-1.3.2/cram/*.h
 
 library
   ghc-options:         -Wall
@@ -34,7 +38,7 @@ library
     , transformers-base
 
   hs-source-dirs:      src
-  extra-libraries: pthread
+--  extra-libraries: pthread
   include-dirs:
       htslib-1.3.2
 
