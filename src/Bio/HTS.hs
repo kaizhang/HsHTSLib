@@ -3,7 +3,6 @@
 {-# LANGUAGE TemplateHaskell   #-}
 
 module Bio.HTS where
--- FIXME: fix memory leaks using withPtr
 
 import           Conduit
 import           Control.Monad
@@ -29,7 +28,9 @@ context (baseCtx <> bsCtx <> htsCtx)
 
 include "htslib/sam.h"
 
-readBam :: FilePath -> Source (ResourceT (StateT FileHeader IO)) Bam
+type HeaderState = ResourceT (StateT FileHeader IO)
+
+readBam :: FilePath -> Source HeaderState Bam
 readBam fn = bracketP (openBamFile fn ReadMode) closeBamFile $ \h -> do
     hdr <- liftIO (readBamHeader h)
     lift $ put hdr
@@ -41,7 +42,7 @@ readBam fn = bracketP (openBamFile fn ReadMode) closeBamFile $ \h -> do
             Nothing -> return ()
             Just b -> yield b >> source x
 
-writeBam :: FilePath -> Sink Bam (ResourceT (StateT FileHeader IO)) ()
+writeBam :: FilePath -> Sink Bam HeaderState ()
 writeBam fn = bracketP (openBamFile fn WriteMode) closeBamFile $ \(BamFileHandle fp) -> do
     maybeBam <- await
     case maybeBam of
@@ -76,6 +77,27 @@ closeBamFile (BamFileHandle h) = [CU.exp| void { hts_close($(htsFile* h)) } |]
 readBamHeader :: BamFileHandle -> IO FileHeader
 readBamHeader (BamFileHandle h) =
     BamHeader <$> [CU.exp| bam_hdr_t* { bam_hdr_read($(htsFile* h)->fp.bgzf) } |]
+
+showBamHeader :: FileHeader -> B.ByteString
+showBamHeader (BamHeader hdr) = unsafePerformIO $ join $ B.packCString <$>
+    [CU.exp| char* { $(bam_hdr_t* hdr)->text } |]
+
+data SortOrder = Unknown
+               | Unsorted
+               | Queryname
+               | Coordinate
+
+getSortOrder :: FileHeader -> SortOrder
+getSortOrder header = case lookup "SO" fields of
+    Just "unknown" -> Unknown
+    Just "unsorted" -> Unsorted
+    Just "queryname" -> Queryname
+    Just "coordinate" -> Coordinate
+    _ -> Unknown
+  where
+    fields = map (f . B.split ':') $ tail $ B.split '\t' $ head $ B.lines $
+        showBamHeader header
+    f [a,b] = (a,b)
 
 bamRead1 :: BamFileHandle -> IO (Maybe Bam)
 bamRead1 (BamFileHandle h) = do
@@ -137,6 +159,7 @@ flag = unsafePerformIO . flip withForeignPtr fn
   where
     fn b = [CU.exp| uint16_t { $(bam1_t* b)->core.flag } |]
 
+-- | MAPping Quality. It equals −10 log10 Pr{mapping position is wrong}, rounded to the nearest integer. A value 255 indicates that the mapping quality is not available.
 mapq :: Bam -> Word8
 mapq = unsafePerformIO . flip withForeignPtr fn
   where

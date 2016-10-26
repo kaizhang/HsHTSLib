@@ -18,6 +18,7 @@ library
   exposed-modules:
     Bio.HTS
     Bio.HTS.Types
+    Bio.HTS.Utils
 
   build-depends:
       base >=4.8 && <5.0
@@ -28,8 +29,12 @@ library
     , inline-c
     , mtl
     , template-haskell
+    , vector
+    , unordered-containers
+    , transformers-base
 
   hs-source-dirs:      src
+  extra-libraries: pthread
   include-dirs:
       htslib-1.3.2
 
