@@ -9,7 +9,7 @@ module Bio.HTS.Types
     , BamHdr
     , HTSFile
     , Bam
-    , Bam1'
+    , Bam'
     , Sam(..)
     , showSam
     ) where
@@ -28,11 +28,12 @@ import qualified Language.C.Inline.Context    as C
 import qualified Language.C.Types             as C
 import qualified Language.Haskell.TH          as TH
 
-data Bam1'
-type Bam = ForeignPtr Bam1'
-data BamHdr
+type Bam = ForeignPtr Bam'
+data Bam'
+
 data FileHeader = Empty
                 | BamHeader (Ptr BamHdr)
+data BamHdr
 
 data HTSFile
 newtype BamFileHandle = BamFileHandle (Ptr HTSFile)
@@ -46,7 +47,7 @@ htsTypesTable :: M.Map C.TypeSpecifier TH.TypeQ
 htsTypesTable = M.fromList
    [ (C.TypeName "htsFile", [t| HTSFile |])
    , (C.TypeName "bam_hdr_t", [t| BamHdr |])
-   , (C.TypeName "bam1_t", [t| Bam1' |])
+   , (C.TypeName "bam1_t", [t| Bam' |])
    ]
 
 -- | currently only contains 11 mandatory fields

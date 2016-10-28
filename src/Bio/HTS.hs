@@ -30,6 +30,9 @@ include "htslib/sam.h"
 
 type HeaderState = ResourceT (StateT FileHeader IO)
 
+runBam :: HeaderState a -> IO a
+runBam x = evalStateT (runResourceT x) Empty
+
 readBam :: FilePath -> Source HeaderState Bam
 readBam fn = bracketP (openBamFile fn ReadMode) closeBamFile $ \h -> do
     hdr <- liftIO (readBamHeader h)
@@ -41,6 +44,7 @@ readBam fn = bracketP (openBamFile fn ReadMode) closeBamFile $ \h -> do
         case r of
             Nothing -> return ()
             Just b -> yield b >> source x
+{-# INLINE readBam #-}
 
 writeBam :: FilePath -> Sink Bam HeaderState ()
 writeBam fn = bracketP (openBamFile fn WriteMode) closeBamFile $ \(BamFileHandle fp) -> do
@@ -57,10 +61,11 @@ writeBam fn = bracketP (openBamFile fn WriteMode) closeBamFile $ \(BamFileHandle
                     if err /= 0
                         then error "'bam_hdr_write' failed."
                         else sink fp
-                _ -> error "No header was provided."
+                _ -> error "No Bam header was found!"
   where
     sink fp = awaitForever $ \b' -> liftIO $ withForeignPtr b' $ \b ->
         [CU.exp| int { bam_write1($(htsFile* fp)->fp.bgzf, $(bam1_t* b)) } |]
+{-# INLINE writeBam #-}
 
 openBamFile :: FilePath -> IOMode -> IO BamFileHandle
 openBamFile fn mode = do
@@ -81,6 +86,7 @@ readBamHeader (BamFileHandle h) =
 showBamHeader :: FileHeader -> B.ByteString
 showBamHeader (BamHeader hdr) = unsafePerformIO $ join $ B.packCString <$>
     [CU.exp| char* { $(bam_hdr_t* hdr)->text } |]
+showBamHeader _ = ""
 
 data SortOrder = Unknown
                | Unsorted
@@ -98,6 +104,7 @@ getSortOrder header = case lookup "SO" fields of
     fields = map (f . B.split ':') $ tail $ B.split '\t' $ head $ B.lines $
         showBamHeader header
     f [a,b] = (a,b)
+    f _ = error "Auxiliary field parsing failed!"
 
 bamRead1 :: BamFileHandle -> IO (Maybe Bam)
 bamRead1 (BamFileHandle h) = do
@@ -107,15 +114,17 @@ bamRead1 (BamFileHandle h) = do
             return b;
         } |]
     if r < 0 then return Nothing else Just <$> newForeignPtr bamDestory b
+{-# INLINE bamRead1 #-}
 
 foreign import ccall unsafe "&bam_destroy1"
-   bamDestory :: FunPtr (Ptr Bam1' -> IO ())
+   bamDestory :: FunPtr (Ptr Bam' -> IO ())
 
 -- | Return the chromosome id.
 getChrId :: Bam -> Int32
 getChrId = unsafePerformIO . flip withForeignPtr fn
   where
     fn b = [CU.exp| int32_t { $(bam1_t* b)->core.tid } |]
+{-# INLINE getChrId #-}
 
 -- | Return the chromosome name given the bam file header.
 getChr :: Ptr BamHdr -> Bam -> Maybe B.ByteString
@@ -124,12 +133,14 @@ getChr h b' | i < 0 = Nothing
                 [CU.exp| char* { $(bam_hdr_t* h)->target_name[$(int32_t i)] } |]
   where
     i = getChrId b'
+{-# INLINE getChr #-}
 
 -- | Return the 0-based starting location.
 position :: Bam -> Int32
 position = unsafePerformIO . flip withForeignPtr fn
   where
     fn b = [CU.exp| int32_t { $(bam1_t* b)->core.pos } |]
+{-# INLINE position #-}
 
 -- | For a mapped read, this is just position + cigar2rlen.
 -- For an unmapped read (either according to its flags or if it has no cigar
@@ -138,12 +149,14 @@ endPos :: Bam -> Int32
 endPos = unsafePerformIO . flip withForeignPtr fn
   where
     fn b = [CU.exp| int32_t { bam_endpos($(bam1_t* b)) } |]
+{-# INLINE endPos #-}
 
 -- | Return the query length (read length).
 queryLen :: Bam -> Int32
 queryLen = unsafePerformIO . flip withForeignPtr fn
   where
     fn b = [CU.exp| int32_t { $(bam1_t* b)->core.l_qseq } |]
+{-# INLINE queryLen #-}
 
 -- | Whether the query is on the reverse strand.
 isRev :: Bam -> Bool
@@ -152,18 +165,21 @@ isRev = unsafePerformIO . flip withForeignPtr fn
     fn b = do
         r <- [CU.exp| int {bam_is_rev($(bam1_t* b)) } |]
         return $ if r == 0 then False else True
+{-# INLINE isRev #-}
 
 -- | Return the flag.
 flag :: Bam -> Word16
 flag = unsafePerformIO . flip withForeignPtr fn
   where
     fn b = [CU.exp| uint16_t { $(bam1_t* b)->core.flag } |]
+{-# INLINE flag #-}
 
 -- | MAPping Quality. It equals −10 log10 Pr{mapping position is wrong}, rounded to the nearest integer. A value 255 indicates that the mapping quality is not available.
 mapq :: Bam -> Word8
 mapq = unsafePerformIO . flip withForeignPtr fn
   where
     fn b = [CU.exp| uint8_t { $(bam1_t* b)->core.qual } |]
+{-# INLINE mapq #-}
 
 
 --int8_t seq_comp_table[16] = { 0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15 };
@@ -183,6 +199,7 @@ getSeq = unsafePerformIO . flip withForeignPtr fn
                             $(char* str)[i] = "=ACMGRSVTWYHKDBN"[bam_seqi(s, i)];
                     } |]
                     Just <$> B.packCStringLen (str, fromIntegral l)
+{-# INLINE getSeq #-}
 
 
 -- | Get the name of the query.
@@ -191,6 +208,7 @@ qName = unsafePerformIO . flip withForeignPtr fn
   where
     fn b = join $ B.packCString <$>
         [CU.exp| char* {bam_get_qname($(bam1_t* b)) } |]
+{-# INLINE qName #-}
 
 quality :: Bam -> Maybe B.ByteString
 quality = unsafePerformIO . flip withForeignPtr fn
@@ -214,6 +232,7 @@ quality = unsafePerformIO . flip withForeignPtr fn
                                     $(char* str)[i] = s[i];
                             } |]
                             Just <$> B.packCStringLen (str, fromIntegral l)
+{-# INLINE quality #-}
 
 cigar :: Bam -> Maybe [(Int, Char)]
 cigar = unsafePerformIO . flip withForeignPtr fn
@@ -236,11 +255,13 @@ cigar = unsafePerformIO . flip withForeignPtr fn
                          str' <- peekArray (fromIntegral n) str
                          return $ Just $
                             zip (map fromIntegral num') $ map castCCharToChar str'
+{-# INLINE cigar #-}
 
 mateChrId :: Bam -> Int32
 mateChrId = unsafePerformIO . flip withForeignPtr fn
   where
     fn b = [CU.exp| int32_t { $(bam1_t* b)->core.mtid } |]
+{-# INLINE mateChrId #-}
 
 mateChr :: Ptr BamHdr -> Bam -> Maybe B.ByteString
 mateChr h b' | i < 0 = Nothing
@@ -248,17 +269,20 @@ mateChr h b' | i < 0 = Nothing
                 [CU.exp| char* { $(bam_hdr_t* h)->target_name[$(int32_t i)] } |]
   where
     i = mateChrId b'
+{-# INLINE mateChr #-}
 
 -- | 0-based
 matePos :: Bam -> Int32
 matePos = unsafePerformIO . flip withForeignPtr fn
   where
     fn b = [CU.exp| int32_t { $(bam1_t* b)->core.mpos } |]
+{-# INLINE matePos #-}
 
 tLen :: Bam -> Int32
 tLen = unsafePerformIO . flip withForeignPtr fn
   where
     fn b = [CU.exp| int32_t { $(bam1_t* b)->core.isize } |]
+{-# INLINE tLen #-}
 
 
 -- | Convert Bam record to Sam record.
