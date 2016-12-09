@@ -11,6 +11,7 @@ module Bio.HTS.Types
     , Bam
     , Bam'
     , Sam(..)
+    , Flag(..)
     , showSam
     ) where
 
@@ -37,6 +38,9 @@ data BamHdr
 
 data HTSFile
 newtype BamFileHandle = BamFileHandle (Ptr HTSFile)
+
+-- | SAM record flag
+newtype Flag = Flag Word16
 
 htsCtx :: C.Context
 htsCtx = mempty

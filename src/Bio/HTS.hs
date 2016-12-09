@@ -7,6 +7,7 @@ module Bio.HTS where
 import           Conduit
 import           Control.Monad
 import           Control.Monad.State
+import           Data.Bits                (testBit)
 import qualified Data.ByteString.Char8    as B
 import           Data.Int
 import           Data.Monoid              ((<>))
@@ -84,9 +85,11 @@ readBamHeader (BamFileHandle h) =
     BamHeader <$> [CU.exp| bam_hdr_t* { bam_hdr_read($(htsFile* h)->fp.bgzf) } |]
 
 showBamHeader :: FileHeader -> B.ByteString
-showBamHeader (BamHeader hdr) = unsafePerformIO $ join $ B.packCString <$>
-    [CU.exp| char* { $(bam_hdr_t* hdr)->text } |]
-showBamHeader _ = ""
+showBamHeader (BamHeader hdr) = unsafePerformIO $ do
+    ptr <- [CU.exp| char* { $(bam_hdr_t* hdr)->text } |]
+    l <- [CU.exp| uint32_t { $(bam_hdr_t* hdr)->l_text } |]
+    B.packCStringLen (ptr, fromIntegral l)
+showBamHeader _ = error "No Bam Header was found."
 
 data SortOrder = Unknown
                | Unsorted
@@ -289,3 +292,51 @@ tLen = unsafePerformIO . flip withForeignPtr fn
 bamToSam :: Ptr BamHdr -> Bam -> Sam
 bamToSam h b = Sam (qName b) (flag b) (getChr h b) (position b) (mapq b)
     (cigar b) (mateChr h b) (matePos b) (tLen b) (getSeq b) (quality b)
+
+-- | Template having multiple segments in sequencing
+hasMultiSegments :: Word16 -> Bool
+hasMultiSegments f = testBit f 1
+
+-- | Each segment properly aligned according to the aligner
+isProperAligned :: Word16 -> Bool
+isProperAligned f = testBit f 2
+
+-- | Segment unmapped
+isUnmapped :: Word16 -> Bool
+isUnmapped f = testBit f 3
+
+-- | Next segment in the template unmapped
+isNextUnmapped :: Word16 -> Bool
+isNextUnmapped f = testBit f 4
+
+-- | SEQ being reverse complemented
+isRC :: Word16 -> Bool
+isRC f = testBit f 5
+
+-- | SEQ of the next segment in the template being reverse complemented
+isNextRC :: Word16 -> Bool
+isNextRC f = testBit f 6
+
+-- | The first segment in the template
+isFirstSegment :: Word16 -> Bool
+isFirstSegment f = testBit f 7
+
+-- | The last segment in the template
+isLastSegment :: Word16 -> Bool
+isLastSegment f = testBit f 8
+
+-- | Secondary alignment
+isSecondary :: Word16 -> Bool
+isSecondary f = testBit f 9
+
+-- | Not passing filters, such as platform/vendor quality controls
+isBadQual :: Word16 -> Bool
+isBadQual f = testBit f 10
+
+-- | PCR or optical duplicate
+isDup :: Word16 -> Bool
+isDup f = testBit f 11
+
+-- | Supplementary alignment
+isSupplementary :: Word16 -> Bool
+isSupplementary f = testBit f 12
