@@ -295,48 +295,48 @@ bamToSam h b = Sam (qName b) (flag b) (getChr h b) (position b) (mapq b)
 
 -- | Template having multiple segments in sequencing
 hasMultiSegments :: Word16 -> Bool
-hasMultiSegments f = testBit f 1
+hasMultiSegments f = testBit f 0
 
 -- | Each segment properly aligned according to the aligner
 isProperAligned :: Word16 -> Bool
-isProperAligned f = testBit f 2
+isProperAligned f = testBit f 1
 
 -- | Segment unmapped
 isUnmapped :: Word16 -> Bool
-isUnmapped f = testBit f 3
+isUnmapped f = testBit f 2
 
 -- | Next segment in the template unmapped
 isNextUnmapped :: Word16 -> Bool
-isNextUnmapped f = testBit f 4
+isNextUnmapped f = testBit f 3
 
 -- | SEQ being reverse complemented
 isRC :: Word16 -> Bool
-isRC f = testBit f 5
+isRC f = testBit f 4
 
 -- | SEQ of the next segment in the template being reverse complemented
 isNextRC :: Word16 -> Bool
-isNextRC f = testBit f 6
+isNextRC f = testBit f 5
 
 -- | The first segment in the template
 isFirstSegment :: Word16 -> Bool
-isFirstSegment f = testBit f 7
+isFirstSegment f = testBit f 6
 
 -- | The last segment in the template
 isLastSegment :: Word16 -> Bool
-isLastSegment f = testBit f 8
+isLastSegment f = testBit f 7
 
 -- | Secondary alignment
 isSecondary :: Word16 -> Bool
-isSecondary f = testBit f 9
+isSecondary f = testBit f 8
 
 -- | Not passing filters, such as platform/vendor quality controls
 isBadQual :: Word16 -> Bool
-isBadQual f = testBit f 10
+isBadQual f = testBit f 9
 
 -- | PCR or optical duplicate
 isDup :: Word16 -> Bool
-isDup f = testBit f 11
+isDup f = testBit f 10
 
 -- | Supplementary alignment
 isSupplementary :: Word16 -> Bool
-isSupplementary f = testBit f 12
+isSupplementary f = testBit f 11
