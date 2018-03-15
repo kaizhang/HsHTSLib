@@ -6,7 +6,7 @@ module Bio.HTS where
 
 import           Conduit
 import           Control.Monad
-import           Control.Monad.State
+import           Control.Monad.Reader
 import           Data.Bits                (testBit)
 import qualified Data.ByteString.Char8    as B
 import           Data.Int
@@ -14,6 +14,7 @@ import           Data.Monoid              ((<>))
 import           Data.Word
 import           Foreign.C.String
 import           Foreign.C.Types
+import Control.Exception (bracket)
 import           Foreign.ForeignPtr
 import           Foreign.Marshal.Array
 import           Foreign.Ptr
@@ -29,32 +30,29 @@ context (baseCtx <> bsCtx <> htsCtx)
 
 include "htslib/sam.h"
 
-type HeaderState = ResourceT (StateT FileHeader IO)
+type HeaderState = ResourceT (ReaderT FileHeader IO)
 
-runBam :: HeaderState a -> IO a
-runBam x = evalStateT (runResourceT x) Empty
+withBamFile :: FilePath -> (BamFileHandle -> HeaderState a) -> IO a
+withBamFile fl action = bracket (openBamFile fl ReadMode) closeBamFile $ \h -> do
+    hdr <- readBamHeader h
+    runReaderT (runResourceT $ action h) hdr
 
-readBam :: FilePath -> Source HeaderState Bam
-readBam fn = bracketP (openBamFile fn ReadMode) closeBamFile $ \h -> do
-    hdr <- liftIO (readBamHeader h)
-    lift $ put hdr
-    source h
-  where
-    source x = do
-        r <- liftIO $ bamRead1 x
-        case r of
-            Nothing -> return ()
-            Just b -> yield b >> source x
+readBam :: BamFileHandle -> ConduitT () Bam HeaderState ()
+readBam h = do
+    r <- liftIO $ bamRead1 h
+    case r of
+        Nothing -> return ()
+        Just b -> yield b >> readBam h
 {-# INLINE readBam #-}
 
-writeBam :: FilePath -> Sink Bam HeaderState ()
+writeBam :: FilePath -> ConduitT Bam o HeaderState ()
 writeBam fn = bracketP (openBamFile fn WriteMode) closeBamFile $ \(BamFileHandle fp) -> do
     maybeBam <- await
     case maybeBam of
         Nothing -> return ()
         Just b' -> do
             leftover b'
-            header <- lift get
+            header <- lift ask
             case header of
                 BamHeader hdr -> do
                     err <- liftIO $ [CU.exp| int {
@@ -77,12 +75,13 @@ openBamFile fn mode = do
         _ -> error ""
     return $ BamFileHandle h
 
-closeBamFile :: BamFileHandle -> IO ()
-closeBamFile (BamFileHandle h) = [CU.exp| void { hts_close($(htsFile* h)) } |]
-
 readBamHeader :: BamFileHandle -> IO FileHeader
 readBamHeader (BamFileHandle h) =
     BamHeader <$> [CU.exp| bam_hdr_t* { bam_hdr_read($(htsFile* h)->fp.bgzf) } |]
+
+closeBamFile :: BamFileHandle -> IO ()
+closeBamFile (BamFileHandle h) = [CU.exp| void { hts_close($(htsFile* h)) } |]
+
 
 showBamHeader :: FileHeader -> B.ByteString
 showBamHeader (BamHeader hdr) = unsafePerformIO $ do
