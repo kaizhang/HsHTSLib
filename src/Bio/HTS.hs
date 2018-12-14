@@ -215,7 +215,7 @@ qName = unsafePerformIO . flip withForeignPtr fn
 
 -- | Human readable quality score which is (Phred base quality + 33).
 qualityS :: Bam -> Maybe B.ByteString
-qualityS = BS.map (+33) <$> quality
+qualityS = fmap (BS.map (+33)) . quality
 
 -- | Phred base quality (a sequence of 0xFF if absent).
 quality :: Bam -> Maybe B.ByteString

@@ -1,5 +1,5 @@
 name:                HsHTSLib
-version:             1.3.2.3
+version:             1.3.2.4
 synopsis:            High level bindings to htslib.
 description:         This package provides high level bindings to htslib, a library
                      for processing high throughput DNA sequencing data.
