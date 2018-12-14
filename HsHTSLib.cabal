@@ -34,7 +34,7 @@ library
     , template-haskell
 
   hs-source-dirs:      src
-  extra-libraries: pthread
+  extra-libraries: pthread z
   include-dirs:
       htslib-1.3.2
 
@@ -75,11 +75,28 @@ library
       htslib-1.3.2/cram/thread_pool.c
       htslib-1.3.2/cram/vlen.c
       htslib-1.3.2/cram/zfio.c
-
       -- htslib-1.3.2/tabix.c
       -- htslib-1.3.2/htsfile.c
 
   default-language:    Haskell2010
+
+test-suite tests
+  type: exitcode-stdio-1.0
+  hs-source-dirs: tests
+  main-is: Main.hs
+  other-modules:
+
+  default-language:    Haskell2010
+  build-depends:
+      base
+    , HsHTSLib
+    , bytestring
+    , vector
+    , tasty
+    , tasty-golden
+    , tasty-hunit
+    , conduit
+    , mtl
 
 source-repository  head
   type: git

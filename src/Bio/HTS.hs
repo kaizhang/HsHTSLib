@@ -9,6 +9,7 @@ import           Control.Monad
 import           Control.Monad.Reader
 import           Data.Bits                (testBit)
 import qualified Data.ByteString.Char8    as B
+import qualified Data.ByteString as BS
 import           Data.Int
 import           Data.Monoid              ((<>))
 import           Data.Word
@@ -212,6 +213,11 @@ qName = unsafePerformIO . flip withForeignPtr fn
         [CU.exp| char* {bam_get_qname($(bam1_t* b)) } |]
 {-# INLINE qName #-}
 
+-- | Human readable quality score which is (Phred base quality + 33).
+qualityS :: Bam -> Maybe B.ByteString
+qualityS = BS.map (+33) <$> quality
+
+-- | Phred base quality (a sequence of 0xFF if absent).
 quality :: Bam -> Maybe B.ByteString
 quality = unsafePerformIO . flip withForeignPtr fn
   where
