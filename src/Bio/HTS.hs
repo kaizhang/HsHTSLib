@@ -348,20 +348,59 @@ auxData bam = unsafePerformIO $ withForeignPtr bam $ \b -> do
                     let l = B.length str + 1 + 3
                     rs <- go (plusPtr ptr l) $ i - l
                     return $ (name, AuxString str) : rs
-                'H' -> error "not implemented"
-                'B' -> error "not implemented"
+                'H' -> do 
+                    str <- B.packCString (plusPtr ptr 3)
+                    let l = B.length str + 1 + 3
+                    rs <- go (plusPtr ptr l) $ i - l
+                    return $ (name, AuxByteArray str) : rs
+                'B' -> do
+                    n <- fromIntegral <$> (peek $ plusPtr ptr 4 :: IO Int32)
+                    castCCharToChar <$> (peek $ plusPtr ptr 3) >>= \case
+                        'c' -> do
+                            r <- AuxIntArray . map fromIntegral <$>
+                                (peekArray n $ plusPtr ptr 8 :: IO [Int8])
+                            let l = 8 + n
+                            rs <- go (plusPtr ptr l) $ i - l
+                            return $ (name, r) : rs
+                        'C' -> do
+                            r <- AuxIntArray . map fromIntegral <$>
+                                (peekArray n $ plusPtr ptr 8 :: IO [Word8])
+                            let l = 8 + n
+                            rs <- go (plusPtr ptr l) $ i - l
+                            return $ (name, r) : rs
+                        's' -> do
+                            r <- AuxIntArray . map fromIntegral <$>
+                                (peekArray n $ plusPtr ptr 8 :: IO [Int16])
+                            let l = 8 + 2 * n
+                            rs <- go (plusPtr ptr l) $ i - l
+                            return $ (name, r) : rs
+                        'S' -> do
+                            r <- AuxIntArray . map fromIntegral <$>
+                                (peekArray n $ plusPtr ptr 8 :: IO [Word16])
+                            let l = 8 + 2 * n
+                            rs <- go (plusPtr ptr l) $ i - l
+                            return $ (name, r) : rs
+                        'i' -> do
+                            r <- AuxIntArray . map fromIntegral <$>
+                                (peekArray n $ plusPtr ptr 8 :: IO [Int32])
+                            let l = 8 + 4 * n
+                            rs <- go (plusPtr ptr l) $ i - l
+                            return $ (name, r) : rs
+                        'I' -> do
+                            r <- AuxIntArray . map fromIntegral <$>
+                                (peekArray n $ plusPtr ptr 8 :: IO [Word32])
+                            let l = 8 + 4 * n
+                            rs <- go (plusPtr ptr l) $ i - l
+                            return $ (name, r) : rs
+                        'f' -> do
+                            r <- AuxFloatArray <$>
+                                (peekArray n $ plusPtr ptr 8 :: IO [Float])
+                            let l = 8 + 4 * n
+                            rs <- go (plusPtr ptr l) $ i - l
+                            return $ (name, r) : rs
+                        x -> error $ "Unknown auxiliary record type: " ++ [x]
                 x -> error $ "Unknown auxiliary record type: " ++ [x]
             
-        {-
-    auxLocation = do
-        loc <- [CU.block| int8_t {
-                        uint8_t *s = bam_get_aux($(bam1_t* b));
-                        return (s[0] == 0xff);
-                     } |]
-                if x /= 0
-                    -}
-
-
 -- | Convert Bam record to Sam record.
 bamToSam :: Ptr BamHdr -> Bam -> Sam
 bamToSam h b = Sam (qName b) (flag b) (getChr h b) (position b) (mapq b)

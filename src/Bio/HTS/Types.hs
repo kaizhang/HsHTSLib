@@ -48,8 +48,9 @@ data AuxiliaryData = AuxChar Char
                    | AuxInt Int
                    | AuxFloat Float
                    | AuxString B.ByteString
-                   | AuxByteArray
-                   | AuxArray
+                   | AuxByteArray BS.ByteString
+                   | AuxIntArray [Int]
+                   | AuxFloatArray [Float]
                    deriving (Show)
 
 showAuxiliaryData :: (B.ByteString, AuxiliaryData) -> B.ByteString
