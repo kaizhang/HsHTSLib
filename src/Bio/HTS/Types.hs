@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes       #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell   #-}
 
 module Bio.HTS.Types
@@ -12,6 +13,7 @@ module Bio.HTS.Types
     , Bam'
     , Sam(..)
     , Flag(..)
+    , AuxiliaryData(..)
     , showSam
     ) where
 
@@ -42,6 +44,24 @@ newtype BamFileHandle = BamFileHandle (Ptr HTSFile)
 -- | SAM record flag
 newtype Flag = Flag Word16
 
+data AuxiliaryData = AuxChar Char
+                   | AuxInt Int
+                   | AuxFloat Float
+                   | AuxString B.ByteString
+                   | AuxByteArray
+                   | AuxArray
+                   deriving (Show)
+
+showAuxiliaryData :: (B.ByteString, AuxiliaryData) -> B.ByteString
+showAuxiliaryData (name, aux) = name <> aux'
+  where
+    aux' = case aux of
+        AuxChar x -> B.pack [':', 'A', ':', x]
+        AuxInt x -> B.pack $ ":i:" <> show x
+        AuxFloat x -> B.pack $ ":f:" <> show x
+        AuxString x -> ":Z:" <> x
+        _ -> ""
+
 htsCtx :: C.Context
 htsCtx = mempty
   { C.ctxTypesTable = htsTypesTable
@@ -67,14 +87,15 @@ data Sam = Sam
     , samTlen  :: !Int32
     , samSeq   :: !(Maybe B.ByteString)
     , samQual  :: !(Maybe B.ByteString)
+    , samAux   :: [(B.ByteString, AuxiliaryData)]
     } deriving (Show)
 
 showSam :: Sam -> B.ByteString
-showSam s = B.intercalate "\t"
-    [ samQname s, pack' $ samFlag s, fromMaybe "*" $ samRname s, pack' $ samPos s + 1
-    , pack' $ samMapq s, fromMaybe "*" $ f <$> samCigar s, fromMaybe "*" $ samRnext s
-    , pack' $ samPnext s + 1, pack' $ samTlen s, fromMaybe "*" $ samSeq s
-    , fromMaybe "*" $ BS.map (+33) <$> samQual s ]
+showSam Sam{..} = B.intercalate "\t" $
+    [ samQname, pack' samFlag, fromMaybe "*" samRname, pack' $ samPos + 1
+    , pack' samMapq, fromMaybe "*" $ f <$> samCigar, fromMaybe "*" samRnext
+    , pack' $ samPnext + 1, pack' samTlen, fromMaybe "*" samSeq
+    , fromMaybe "*" $ BS.map (+33) <$> samQual ] ++ map showAuxiliaryData samAux
   where
     f = B.concat . concatMap (\(i, x) -> [pack' i, B.singleton x])
     pack' :: Integral a => a -> B.ByteString

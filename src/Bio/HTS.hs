@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes       #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TemplateHaskell   #-}
 
 module Bio.HTS where
@@ -17,6 +18,7 @@ import           Foreign.C.String
 import           Foreign.C.Types
 import Control.Exception (bracket)
 import           Foreign.ForeignPtr
+import Foreign.Storable (peek)
 import           Foreign.Marshal.Array
 import           Foreign.Ptr
 import           Language.C.Inline        (baseCtx, bsCtx, context, include,
@@ -292,11 +294,79 @@ tLen = unsafePerformIO . flip withForeignPtr fn
     fn b = [CU.exp| int32_t { $(bam1_t* b)->core.isize } |]
 {-# INLINE tLen #-}
 
+auxData :: Bam -> [(B.ByteString, AuxiliaryData)]
+auxData bam = unsafePerformIO $ withForeignPtr bam $ \b -> do
+    l <- [CU.exp| int32_t { bam_get_l_aux($(bam1_t* b)) } |]
+    aux <- [CU.exp| uint8_t* { bam_get_aux($(bam1_t* b)) } |]
+    go aux $ fromIntegral l
+  where
+    go ptr i
+        | i <= 0 = return []
+        | otherwise = do
+            name <- B.packCStringLen (castPtr ptr, 2)
+            castCCharToChar <$> (peek $ plusPtr ptr 2) >>= \case
+                'A' -> do
+                    r <- AuxChar . castCCharToChar <$> peek (plusPtr ptr 3)
+                    rs <- go (plusPtr ptr 4) $ i - 4
+                    return $ (name, r) : rs
+                -- int8_t
+                'c' -> do
+                    r <- AuxInt . fromIntegral <$> (peek $ plusPtr ptr 3 :: IO Int8)
+                    rs <- go (plusPtr ptr 4) $ i - 4
+                    return $ (name, r) : rs
+                -- uint8_t
+                'C' -> do
+                    r <- AuxInt . fromIntegral <$> (peek $ plusPtr ptr 3 :: IO Word8)
+                    rs <- go (plusPtr ptr 4) $ i - 4
+                    return $ (name, r) : rs
+                -- int16_t
+                's' -> do
+                    r <- AuxInt . fromIntegral <$> (peek $ plusPtr ptr 3 :: IO Int16)
+                    rs <- go (plusPtr ptr 5) $ i - 5
+                    return $ (name, r) : rs
+                -- uint16_t
+                'S' -> do
+                    r <- AuxInt . fromIntegral <$> (peek $ plusPtr ptr 3 :: IO Word16)
+                    rs <- go (plusPtr ptr 5) $ i - 5
+                    return $ (name, r) : rs
+                -- int32_t
+                'i' -> do
+                    r <- AuxInt . fromIntegral <$> (peek $ plusPtr ptr 3 :: IO Int32)
+                    rs <- go (plusPtr ptr 7) $ i - 7
+                    return $ (name, r) : rs
+                -- uint32_t
+                'I' -> do
+                    r <- AuxInt . fromIntegral <$> (peek $ plusPtr ptr 3 :: IO Word32)
+                    rs <- go (plusPtr ptr 7) $ i - 7
+                    return $ (name, r) : rs
+                'f' -> do
+                    r <- AuxFloat <$> peek (plusPtr ptr 3)
+                    rs <- go (plusPtr ptr 7) $ i - 7
+                    return $ (name, r) : rs
+                'Z' -> do
+                    str <- B.packCString (plusPtr ptr 3)
+                    let l = B.length str + 1 + 3
+                    rs <- go (plusPtr ptr l) $ i - l
+                    return $ (name, AuxString str) : rs
+                'H' -> error "not implemented"
+                'B' -> error "not implemented"
+                x -> error $ "Unknown auxiliary record type: " ++ [x]
+            
+        {-
+    auxLocation = do
+        loc <- [CU.block| int8_t {
+                        uint8_t *s = bam_get_aux($(bam1_t* b));
+                        return (s[0] == 0xff);
+                     } |]
+                if x /= 0
+                    -}
+
 
 -- | Convert Bam record to Sam record.
 bamToSam :: Ptr BamHdr -> Bam -> Sam
 bamToSam h b = Sam (qName b) (flag b) (getChr h b) (position b) (mapq b)
     (cigar b) (mateChr h b) (matePos b) (tLen b) (getSeq b) (quality b)
+    (auxData b)
 
 -- | Template having multiple segments in sequencing
 hasMultiSegments :: Word16 -> Bool
