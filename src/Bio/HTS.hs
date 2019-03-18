@@ -98,6 +98,7 @@ data SortOrder = Unknown
                | Queryname
                | Coordinate
 
+-- | Get the sort information.
 getSortOrder :: FileHeader -> SortOrder
 getSortOrder header = case lookup "SO" fields of
     Just "unknown" -> Unknown
@@ -111,6 +112,7 @@ getSortOrder header = case lookup "SO" fields of
     f [a,b] = (a,b)
     f _ = error "Auxiliary field parsing failed!"
 
+-- | Read one record.
 bamRead1 :: BamFileHandle -> IO (Maybe Bam)
 bamRead1 (BamFileHandle h) = do
     (r, b) <- withPtr $ \r -> [CU.block| bam1_t* {
@@ -215,7 +217,7 @@ qName = unsafePerformIO . flip withForeignPtr fn
         [CU.exp| char* {bam_get_qname($(bam1_t* b)) } |]
 {-# INLINE qName #-}
 
--- | Human readable quality score which is (Phred base quality + 33).
+-- | Human readable quality score which is: Phred base quality + 33.
 qualityS :: Bam -> Maybe B.ByteString
 qualityS = fmap (BS.map (+33)) . quality
 

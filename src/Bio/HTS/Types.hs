@@ -31,6 +31,7 @@ import qualified Language.C.Inline.Context    as C
 import qualified Language.C.Types             as C
 import qualified Language.Haskell.TH          as TH
 
+-- | The Bam type represented as a foreign opaque pointer.
 type Bam = ForeignPtr Bam'
 data Bam'
 
@@ -75,7 +76,7 @@ htsTypesTable = M.fromList
    , (C.TypeName "bam1_t", [t| Bam' |])
    ]
 
--- | currently only contains 11 mandatory fields
+-- | The SAM format
 data Sam = Sam
     { samQname :: !B.ByteString
     , samFlag  :: !Word16
