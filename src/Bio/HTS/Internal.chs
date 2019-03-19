@@ -38,7 +38,7 @@ import Foreign.C.Types
 import Foreign.C.String
 import System.IO (IOMode(..))
         
-#include "cbits/aux.c"
+#include "cbits/hs_htslib.c"
 #include "htslib/sam.h"
 
 -- | Opaque data representing the hts file.

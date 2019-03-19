@@ -39,7 +39,7 @@ library
   extra-libraries: pthread z curl bz2 lzma crypto
   include-dirs: htslib-1.9
   c-sources:
-      cbits/aux.c
+      cbits/hs_htslib.c
 
       htslib-1.9/bcf_sr_sort.c
       htslib-1.9/bgzf.c
