@@ -27,6 +27,7 @@ module Bio.HTS
     , mateStartLoc
     , tLen
     , auxData
+    , queryAuxData
     , bamToSam
 
       -- * Modify BAM
@@ -55,7 +56,6 @@ import           Data.Int
 import           Data.Word
 import           Foreign.C.String
 import           Foreign.ForeignPtr
-import Foreign.Storable (peek)
 import           Foreign.Marshal.Array
 import Foreign.Marshal.Alloc
 import Foreign.Storable (poke, peekByteOff)
@@ -269,43 +269,43 @@ auxData bam = unsafePerformIO $ withForeignPtr (unbam bam) $ \b -> do
         | i <= 0 = return []
         | otherwise = do
             name <- (,) <$> peekByteOff ptr 0 <*> peekByteOff ptr 1
-            castCCharToChar <$> (peek $ plusPtr ptr 2) >>= \case
+            castCCharToChar <$> peekByteOff ptr 2 >>= \case
                 'A' -> do
-                    r <- AuxChar . castCCharToChar <$> peek (plusPtr ptr 3)
+                    r <- AuxChar . castCCharToChar <$> peekByteOff ptr 3
                     rs <- go (plusPtr ptr 4) $ i - 4
                     return $ (name, r) : rs
                 -- int8_t
                 'c' -> do
-                    r <- AuxInt . fromIntegral <$> (peek $ plusPtr ptr 3 :: IO Int8)
+                    r <- AuxInt . fromIntegral <$> (peekByteOff ptr 3 :: IO Int8)
                     rs <- go (plusPtr ptr 4) $ i - 4
                     return $ (name, r) : rs
                 -- uint8_t
                 'C' -> do
-                    r <- AuxInt . fromIntegral <$> (peek $ plusPtr ptr 3 :: IO Word8)
+                    r <- AuxInt . fromIntegral <$> (peekByteOff ptr 3 :: IO Word8)
                     rs <- go (plusPtr ptr 4) $ i - 4
                     return $ (name, r) : rs
                 -- int16_t
                 's' -> do
-                    r <- AuxInt . fromIntegral <$> (peek $ plusPtr ptr 3 :: IO Int16)
+                    r <- AuxInt . fromIntegral <$> (peekByteOff ptr 3 :: IO Int16)
                     rs <- go (plusPtr ptr 5) $ i - 5
                     return $ (name, r) : rs
                 -- uint16_t
                 'S' -> do
-                    r <- AuxInt . fromIntegral <$> (peek $ plusPtr ptr 3 :: IO Word16)
+                    r <- AuxInt . fromIntegral <$> (peekByteOff ptr 3 :: IO Word16)
                     rs <- go (plusPtr ptr 5) $ i - 5
                     return $ (name, r) : rs
                 -- int32_t
                 'i' -> do
-                    r <- AuxInt . fromIntegral <$> (peek $ plusPtr ptr 3 :: IO Int32)
+                    r <- AuxInt . fromIntegral <$> (peekByteOff ptr 3 :: IO Int32)
                     rs <- go (plusPtr ptr 7) $ i - 7
                     return $ (name, r) : rs
                 -- uint32_t
                 'I' -> do
-                    r <- AuxInt . fromIntegral <$> (peek $ plusPtr ptr 3 :: IO Word32)
+                    r <- AuxInt . fromIntegral <$> (peekByteOff ptr 3 :: IO Word32)
                     rs <- go (plusPtr ptr 7) $ i - 7
                     return $ (name, r) : rs
                 'f' -> do
-                    r <- AuxFloat <$> peek (plusPtr ptr 3)
+                    r <- AuxFloat <$> peekByteOff ptr 3
                     rs <- go (plusPtr ptr 7) $ i - 7
                     return $ (name, r) : rs
                 'Z' -> do
@@ -319,8 +319,8 @@ auxData bam = unsafePerformIO $ withForeignPtr (unbam bam) $ \b -> do
                     rs <- go (plusPtr ptr l) $ i - l
                     return $ (name, AuxByteArray str) : rs
                 'B' -> do
-                    n <- fromIntegral <$> (peek $ plusPtr ptr 4 :: IO Int32)
-                    castCCharToChar <$> (peek $ plusPtr ptr 3) >>= \case
+                    n <- fromIntegral <$> (peekByteOff ptr 4 :: IO Int32)
+                    castCCharToChar <$> peekByteOff ptr 3 >>= \case
                         'c' -> do
                             r <- AuxIntArray . map fromIntegral <$>
                                 (peekArray n $ plusPtr ptr 8 :: IO [Int8])
@@ -365,6 +365,49 @@ auxData bam = unsafePerformIO $ withForeignPtr (unbam bam) $ \b -> do
                             return $ (name, r) : rs
                         x -> error $ "Unknown auxiliary record type: " ++ [x]
                 x -> error $ "Unknown auxiliary record type: " ++ [x]
+{-# INLINE auxData #-}
+
+queryAuxData :: (Char, Char) -> BAM -> Maybe AuxiliaryData
+queryAuxData (x1,x2) bam = unsafePerformIO $
+    withForeignPtr (unbam bam) $ \b -> do
+        ptr <- bamAuxGet b [x1,x2]
+        if ptr == nullPtr
+            then return Nothing
+            else Just <$> getAuxData1 ptr
+{-# INLINE queryAuxData #-}
+
+getAuxData1 :: Ptr () -> IO AuxiliaryData
+getAuxData1 ptr = castCCharToChar <$> peekByteOff ptr 0 >>= \case
+    'A' -> AuxChar . castCCharToChar <$> peekByteOff ptr 1
+    'c' -> AuxInt . fromIntegral <$> (peekByteOff ptr 1 :: IO Int8)
+    'C' -> AuxInt . fromIntegral <$> (peekByteOff ptr 1 :: IO Word8)
+    's' -> AuxInt . fromIntegral <$> (peekByteOff ptr 1 :: IO Int16)
+    'S' -> AuxInt . fromIntegral <$> (peekByteOff ptr 1 :: IO Word16)
+    'i' -> AuxInt . fromIntegral <$> (peekByteOff ptr 1 :: IO Int32)
+    'I' -> AuxInt . fromIntegral <$> (peekByteOff ptr 1 :: IO Word32)
+    'f' -> AuxFloat <$> peekByteOff ptr 1
+    'Z' -> AuxString <$> B.packCString (plusPtr ptr 1)
+    'H' -> AuxByteArray <$> B.packCString (plusPtr ptr 1)
+    'B' -> do
+        n <- fromIntegral <$> (peekByteOff ptr 2 :: IO Int32)
+        peekByteOff ptr 1 >>= \case
+            'c' -> AuxIntArray . map fromIntegral <$>
+                (peekArray n $ plusPtr ptr 6 :: IO [Int8])
+            'C' -> AuxIntArray . map fromIntegral <$>
+                (peekArray n $ plusPtr ptr 6 :: IO [Word8])
+            's' -> AuxIntArray . map fromIntegral <$>
+                (peekArray n $ plusPtr ptr 6 :: IO [Int16])
+            'S' -> AuxIntArray . map fromIntegral <$>
+                (peekArray n $ plusPtr ptr 6 :: IO [Word16])
+            'i' -> AuxIntArray . map fromIntegral <$>
+                (peekArray n $ plusPtr ptr 6 :: IO [Int32])
+            'I' -> AuxIntArray . map fromIntegral <$>
+                (peekArray n $ plusPtr ptr 6 :: IO [Word32])
+            'f' -> AuxFloatArray <$>
+                (peekArray n $ plusPtr ptr 6 :: IO [Float])
+            x -> error $ "Unknown auxiliary record type: " ++ [x]
+    x -> error $ "Unknown auxiliary record type: " ++ [x]
+{-# INLINE getAuxData1 #-}
             
 -- | Convert Bam record to Sam record.
 bamToSam :: BAMHeader -> BAM -> SAM
@@ -426,7 +469,10 @@ isSupplementary f = testBit f 11
 --------------------------------------------------------------------------------
 
 -- | Append tag data to a bam record.
-appendAux :: (Char, Char) -> AuxiliaryData -> BAM -> IO ()
+appendAux :: (Char, Char)  -- ^ Tag
+          -> AuxiliaryData -- ^ Data
+          -> BAM
+          -> IO ()
 appendAux (x1,x2) aux bam = withForeignPtr (unbam bam) $ \b -> do
     code <- case aux of
         AuxChar d -> with d $ bamAuxAppend b [x1,x2] 'A' 1
@@ -438,3 +484,4 @@ appendAux (x1,x2) aux bam = withForeignPtr (unbam bam) $ \b -> do
     if code == 0 then return () else error "Append aux failed"
   where
     with x fun = alloca $ \ptr -> poke ptr x >> fun (castPtr ptr)
+{-# INLINE appendAux #-}

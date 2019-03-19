@@ -28,6 +28,7 @@ module Bio.HTS.Internal
     , bamGetCigar
     , bamGetAux
     , bamGetLAux
+    , bamAuxGet
     , bamAuxAppend
     ) where
 
@@ -105,6 +106,8 @@ data Bam1
 {#fun bam_get_aux_ as bamGetAux { castPtr `Ptr Bam1' } -> `Ptr ()' castPtr #}
 
 {#fun bam_get_l_aux_ as bamGetLAux { castPtr `Ptr Bam1' } -> `Int' #}
+
+{#fun bam_aux_get as ^ { castPtr `Ptr Bam1', `String'} -> `Ptr ()' castPtr #}
 
 {#fun bam_aux_append as ^
     { castPtr `Ptr Bam1', `String', `Char', `Int', castPtr `Ptr ()'

@@ -1,5 +1,5 @@
-# Revision history for passwd-manager
+# Revision history for HsHTSLib
 
-## 0.1.0  -- YYYY-mm-dd
+## 1.9.0  -- YYYY-mm-dd
 
-* First version. Released on an unsuspecting world.
+* htslib-1.9

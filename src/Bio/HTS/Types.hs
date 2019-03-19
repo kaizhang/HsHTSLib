@@ -75,6 +75,7 @@ data AuxiliaryData = AuxChar Char
                    | AuxByteArray BS.ByteString
                    | AuxIntArray [Int]
                    | AuxFloatArray [Float]
+                   deriving (Show)
 
 showAuxiliaryData :: ((Char, Char), AuxiliaryData) -> B.ByteString
 showAuxiliaryData ((x1,x2), aux) = B.pack [x1,x2] <> aux'
