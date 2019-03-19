@@ -23,9 +23,7 @@ tests = goldenVsFile "BAM Read/Write Test" expect output $
 bamFileToSamFile :: FilePath  -- ^ Input bam file
                  -> FilePath  -- ^ Output Sam file
                  -> IO ()
-bamFileToSamFile input output = withBamFile input $ \fl ->
-    runConduit $ readBam fl .| mapMC f .| unlinesAsciiC .| sinkFile output
-  where
-    f bam = do
-        lift ask >>= \case
-            BamHeader hdr -> return $ showSam $ bamToSam hdr bam
+bamFileToSamFile input output = do
+    header <- getBamHeader input
+    runResourceT $ runConduit $ streamBam input .|
+        mapC (showSam . bamToSam header) .| unlinesAsciiC .| sinkFile output
