@@ -15,7 +15,7 @@ char* bam_chr(bam_hdr_t *h, int32_t i) {
 }
 
 int bam_is_rev_(bam1_t *b) {
-    return b->core.flag&BAM_FREVERSE != 0;
+    return (b->core.flag&BAM_FREVERSE) != 0;
 }
 
 void bam_get_seq_(bam1_t *b, char *res, uint32_t l) {
