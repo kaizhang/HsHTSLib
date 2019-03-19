@@ -37,9 +37,21 @@ import Foreign
 import Foreign.C.Types
 import Foreign.C.String
 import System.IO (IOMode(..))
-        
-#include "cbits/hs_htslib.c"
+
 #include "htslib/sam.h"
+
+#c
+BGZF* get_bgzf(htsFile *h);
+char* get_header_text(bam_hdr_t *hdr);
+uint32_t get_header_size(bam_hdr_t *hdr);
+char* bam_chr(bam_hdr_t *h, int32_t i);
+int bam_is_rev_(bam1_t *b);
+void bam_get_seq_(bam1_t *b, char *res, uint32_t l);
+int bam_get_qual_(bam1_t *b, char *res, uint32_t l);
+void bam_get_cigar_(bam1_t *b, int *num, char *str, uint32_t l);
+uint8_t* bam_get_aux_(bam1_t *b);
+int bam_get_l_aux_(bam1_t *b);
+#endc
 
 -- | Opaque data representing the hts file.
 data HTSFile
