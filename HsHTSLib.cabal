@@ -36,7 +36,7 @@ library
 
   hs-source-dirs:      src
   build-tools:         c2hs >= 0.25.0
-  extra-libraries: pthread z curl bz2 lzma crypto
+  extra-libraries: pthread z bz2 lzma crypto
   include-dirs: htslib-1.9
   c-sources:
       cbits/hs_htslib.c
@@ -47,10 +47,10 @@ library
       htslib-1.9/errmod.c
       htslib-1.9/faidx.c
       htslib-1.9/hfile.c
-      htslib-1.9/hfile_gcs.c
-      htslib-1.9/hfile_libcurl.c
+      --htslib-1.9/hfile_gcs.c
+      --htslib-1.9/hfile_libcurl.c
       htslib-1.9/hfile_net.c
-      htslib-1.9/hfile_s3.c
+      --htslib-1.9/hfile_s3.c
       htslib-1.9/hts.c
       -- htslib-1.9/htsfile.c
       htslib-1.9/hts_os.c
