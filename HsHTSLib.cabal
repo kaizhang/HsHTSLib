@@ -36,7 +36,7 @@ library
 
   hs-source-dirs:      src
   build-tools:         c2hs >= 0.25.0
-  extra-libraries: pthread z bz2 lzma crypto
+  extra-libraries: pthread z
   include-dirs: htslib-1.9
   c-sources:
       cbits/hs_htslib.c
