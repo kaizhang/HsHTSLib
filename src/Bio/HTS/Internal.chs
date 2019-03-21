@@ -30,6 +30,7 @@ module Bio.HTS.Internal
     , bamGetLAux
     , bamAuxGet
     , bamAuxAppend
+    , bamMarkDup
     ) where
 
 import Control.Exception (bracket)
@@ -51,6 +52,7 @@ int bam_get_qual_(bam1_t *b, char *res, uint32_t l);
 void bam_get_cigar_(bam1_t *b, int *num, char *str, uint32_t l);
 uint8_t* bam_get_aux_(bam1_t *b);
 int bam_get_l_aux_(bam1_t *b);
+void bam_mark_dup(bam1_t *b);
 #endc
 
 -- | Opaque data representing the hts file.
@@ -124,6 +126,9 @@ data Bam1
 {#fun bam_aux_append as ^
     { castPtr `Ptr Bam1', `String', `Char', `Int', castPtr `Ptr ()'
     } -> `CInt' #}
+
+{#fun bam_mark_dup as ^ { castPtr `Ptr Bam1' } -> `()' #}
+
 
 --------------------------------------------------------------------------------
 -- BAM Header

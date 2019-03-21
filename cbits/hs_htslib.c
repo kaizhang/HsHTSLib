@@ -46,3 +46,7 @@ uint8_t* bam_get_aux_(bam1_t *b) { return bam_get_aux(b); }
 
 int bam_get_l_aux_(bam1_t *b) { return bam_get_l_aux(b); }
 
+void bam_mark_dup(bam1_t *b) { b->core.flag |= BAM_FDUP; }
+
+
+

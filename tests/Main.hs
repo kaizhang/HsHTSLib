@@ -1,12 +1,10 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE FlexibleContexts #-}
 import Test.Tasty
-import           Test.Tasty.Golden
+import Test.Tasty.Golden
 import Conduit
-import Control.Monad.Reader
 
 import Bio.HTS
-import Bio.HTS.Types
 
 main :: IO ()
 main = defaultMain $ testGroup "Main"

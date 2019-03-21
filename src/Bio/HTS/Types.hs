@@ -7,6 +7,9 @@ module Bio.HTS.Types
     , showBamHeader
     , SortOrder(..)
     , SAM(..)
+    , CIGAR(..)
+    , cigar2String
+    , string2Cigar
     , AuxiliaryData(..)
     , showSam
     ) where
@@ -40,14 +43,29 @@ data SortOrder = Unknown
                | Coordinate
                deriving (Show, Eq)
 
--- | The SAM format.
+newtype CIGAR = CIGAR [(Int, Char)]
+
+cigar2String :: CIGAR -> B.ByteString
+cigar2String (CIGAR c) = B.concat $
+    concatMap (\(i, x) -> [fromJust $ packDecimal i, B.singleton x]) c
+
+string2Cigar :: B.ByteString -> CIGAR
+string2Cigar c = CIGAR $ go c
+  where
+    go x = case readDecimal x of
+        Nothing -> error $ "parse cigar fail: " ++ show c
+        Just (n, remain) -> if B.length remain == 1
+            then [(n, B.head remain)]
+            else (n, B.head remain) : go (B.tail remain)
+        
+-- | The SAM format. The SAM format uses 1-based coordinate system.
 data SAM = SAM
     { _sam_qname :: !B.ByteString
     , _sam_flag  :: !Word16
     , _sam_rname :: !(Maybe B.ByteString)
     , _sam_pos   :: !Int
     , _sam_mapq  :: !Word8
-    , _sam_cigar :: !(Maybe [(Int, Char)])
+    , _sam_cigar :: !(Maybe CIGAR)
     , _sam_rnext :: !(Maybe B.ByteString)
     , _sam_pnext :: !Int
     , _sam_tlen  :: !Int
@@ -58,12 +76,12 @@ data SAM = SAM
 
 showSam :: SAM -> B.ByteString
 showSam SAM{..} = B.intercalate "\t" $
-    [ _sam_qname, pack' _sam_flag, fromMaybe "*" _sam_rname, pack' $ _sam_pos + 1
-    , pack' _sam_mapq, fromMaybe "*" $ f <$> _sam_cigar, fromMaybe "*" _sam_rnext
-    , pack' $ _sam_pnext + 1, pack' _sam_tlen, fromMaybe "*" _sam_seq
-    , fromMaybe "*" $ BS.map (+33) <$> _sam_qual ] ++ map showAuxiliaryData _sam_aux
+    [ _sam_qname, pack' _sam_flag, fromMaybe "*" _sam_rname, pack' _sam_pos
+    , pack' _sam_mapq, fromMaybe "*" $ cigar2String <$> _sam_cigar
+    , fromMaybe "*" _sam_rnext, pack' _sam_pnext, pack' _sam_tlen
+    , fromMaybe "*" _sam_seq, fromMaybe "*" $ BS.map (+33) <$> _sam_qual
+    ] ++ map showAuxiliaryData _sam_aux
   where
-    f = B.concat . concatMap (\(i, x) -> [pack' i, B.singleton x])
     pack' :: Integral a => a -> B.ByteString
     pack' = fromJust . packDecimal
 

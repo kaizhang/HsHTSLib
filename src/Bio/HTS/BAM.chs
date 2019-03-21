@@ -2,15 +2,15 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
 
-module Bio.HTS
+module Bio.HTS.BAM
     ( getBamHeader
     , getSortOrder
     , streamBam
     , sinkBam
 
       -- * Field accessors
-    , getChrId
-    , getChr
+    , refId
+    , refName
     , startLoc
     , endLoc
     , readLen
@@ -18,20 +18,18 @@ module Bio.HTS
     , flag
     , mapq
     , getSeq
-    , seqName
+    , queryName
     , qualityS
     , quality
+    , sumQual
     , cigar
-    , mateChr
-    , mateChrId
+    , mateRefId
+    , mateRefName
     , mateStartLoc
     , tLen
     , auxData
     , queryAuxData
     , bamToSam
-
-      -- * Modify BAM
-    , appendAux
 
       -- * Flag interpretation
     , hasMultiSegments
@@ -46,6 +44,10 @@ module Bio.HTS
     , isBadQual
     , isDup
     , isSupplementary
+
+      -- * Modify BAM
+    , appendAux
+    , setDup
     ) where
 
 import           Conduit
@@ -124,32 +126,35 @@ sinkBam output header = bracketP (htsOpen output "wb") htsClose $ \hts -> do
         _ -> error "'bam_hdr_write' failed."
 
 
--- | Return the chromosome id.
-getChrId :: BAM -> Int
-getChrId = unsafePerformIO . flip withForeignPtr fun . unbam
+-- | Reference sequence ID, −1 <= refId < n_ref; -1 for a read
+-- without a mapping position.
+refId :: BAM -> Int
+refId = unsafePerformIO . flip withForeignPtr fun . unbam
   where
     fun = fmap fromIntegral . {#get bam1_t->core.tid #}
-{-# INLINE getChrId #-}
+{-# INLINE refId #-}
 
--- | Return the chromosome name given the bam file header.
-getChr :: BAMHeader -> BAM -> Maybe B.ByteString
-getChr header bam
+-- | Return the reference sequence name (chromosome name) given the
+-- bam file header.
+refName :: BAMHeader -> BAM -> Maybe B.ByteString
+refName header bam
     | chr < 0 = Nothing
     | otherwise = Just $ unsafePerformIO $
         withForeignPtr (unbamHeader header) $ \h ->
             bamChr h chr >>= B.packCString
   where
-    chr = getChrId bam
-{-# INLINE getChr #-}
+    chr = refId bam
+{-# INLINE refName #-}
 
--- | Return the 0-based starting location.
+-- | Return the 0-based leftmost coordinate.
 startLoc :: BAM -> Int
 startLoc = unsafePerformIO . flip withForeignPtr fun . unbam
   where
     fun = fmap fromIntegral . {#get bam1_t->core.pos #}
 {-# INLINE startLoc #-}
 
--- | For a mapped read, this is just position + cigar2rlen.
+-- | Return the end location according to a 0-based coordinate system.
+-- For a mapped read, this is just position + cigar2rlen.
 -- For an unmapped read (either according to its flags or if it has no cigar
 -- string), we return position + 1 by convention.
 endLoc :: BAM -> Int
@@ -196,11 +201,11 @@ getSeq = unsafePerformIO . flip withForeignPtr fn . unbam
 {-# INLINE getSeq #-}
 
 -- | Get the name of the query.
-seqName :: BAM -> B.ByteString
-seqName = unsafePerformIO . flip withForeignPtr fn . unbam
+queryName :: BAM -> B.ByteString
+queryName = unsafePerformIO . flip withForeignPtr fn . unbam
   where
     fn b = {#get bam1_t->data #} b >>= B.packCString . castPtr
-{-# INLINE seqName #-}
+{-# INLINE queryName #-}
 
 -- | Human readable quality score which is: Phred base quality + 33.
 qualityS :: BAM -> Maybe B.ByteString
@@ -217,7 +222,18 @@ quality = unsafePerformIO . flip withForeignPtr fn . unbam
             _ -> return Nothing
 {-# INLINE quality #-}
 
-cigar :: BAM -> Maybe [(Int, Char)]
+-- | Sum of quality scores that above certain threshold (e.g., 15).
+sumQual :: Int  -- ^ Threshold
+        -> BAM
+        -> Maybe Int
+sumQual th bam = BS.foldl' f 0 <$> quality bam 
+  where
+    f acc x | fromIntegral x < th = acc
+            | otherwise = fromIntegral x + acc
+{-# INLINE sumQual #-}
+
+-- | Get the CIGAR string.
+cigar :: BAM -> Maybe CIGAR
 cigar = unsafePerformIO . flip withForeignPtr fn . unbam
   where
     fn b = fromIntegral <$> {#get bam1_t->core.n_cigar #} b >>= \case
@@ -226,25 +242,26 @@ cigar = unsafePerformIO . flip withForeignPtr fn . unbam
             bamGetCigar b num str n
             num' <- peekArray (fromIntegral n) num
             str' <- peekArray (fromIntegral n) str
-            return $ Just $ zip (map fromIntegral num') $
+            return $ Just $ CIGAR $ zip (map fromIntegral num') $
                 map castCCharToChar str'
 {-# INLINE cigar #-}
 
-mateChrId :: BAM -> Int
-mateChrId = unsafePerformIO . flip withForeignPtr fn . unbam
+-- | Ref-ID of the next segment (the paired read).
+mateRefId :: BAM -> Int
+mateRefId = unsafePerformIO . flip withForeignPtr fn . unbam
   where
     fn = fmap fromIntegral . {#get bam1_t->core.mtid #}
-{-# INLINE mateChrId #-}
+{-# INLINE mateRefId #-}
 
-mateChr :: BAMHeader -> BAM -> Maybe B.ByteString
-mateChr header bam
+mateRefName :: BAMHeader -> BAM -> Maybe B.ByteString
+mateRefName header bam
     | chr < 0 = Nothing
     | otherwise = Just $ unsafePerformIO $
         withForeignPtr (unbamHeader header) $ \h ->
             bamChr h chr >>= B.packCString
   where
-    chr = mateChrId bam
-{-# INLINE mateChr #-}
+    chr = mateRefId bam
+{-# INLINE mateRefName #-}
 
 -- | 0-based
 mateStartLoc :: BAM -> Int
@@ -253,6 +270,10 @@ mateStartLoc = unsafePerformIO . flip withForeignPtr fn . unbam
     fn = fmap fromIntegral . {#get bam1_t->core.mpos #}
 {-# INLINE mateStartLoc #-}
 
+-- | Observed Template length.
+-- If all segments are mapped to the same reference, the unsigned
+-- observed template length equals the number of bases from the
+-- leftmost mapped base to the rightmost mapped base. 
 tLen :: BAM -> Int
 tLen = unsafePerformIO . flip withForeignPtr fn . unbam
   where
@@ -411,8 +432,8 @@ getAuxData1 ptr = castCCharToChar <$> peekByteOff ptr 0 >>= \case
             
 -- | Convert Bam record to Sam record.
 bamToSam :: BAMHeader -> BAM -> SAM
-bamToSam h b = SAM (seqName b) (flag b) (getChr h b) (startLoc b) (mapq b)
-    (cigar b) (mateChr h b) (mateStartLoc b) (tLen b) (getSeq b) (quality b)
+bamToSam h b = SAM (queryName b) (flag b) (refName h b) (startLoc b + 1) (mapq b)
+    (cigar b) (mateRefName h b) (mateStartLoc b + 1) (tLen b) (getSeq b) (quality b)
     (auxData b)
 
 -- | Template having multiple segments in sequencing
@@ -485,3 +506,8 @@ appendAux (x1,x2) aux bam = withForeignPtr (unbam bam) $ \b -> do
   where
     with x fun = alloca $ \ptr -> poke ptr x >> fun (castPtr ptr)
 {-# INLINE appendAux #-}
+
+-- | Turn on duplicate flag.
+setDup :: BAM -> IO ()
+setDup bam = withForeignPtr (unbam bam) bamMarkDup
+{-# INLINE setDup #-}

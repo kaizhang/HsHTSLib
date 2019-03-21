@@ -28,12 +28,15 @@ library
     Bio.HTS
     Bio.HTS.Internal
     Bio.HTS.Types
+    Bio.HTS.BAM
+    Bio.HTS.Utils
 
   build-depends:
       base >= 4.10 && < 5.0
     , bytestring
     , bytestring-lexing
     , conduit >= 1.3.0
+    , containers
 
   hs-source-dirs:      src
   build-tools:         c2hs >= 0.25.0
@@ -110,7 +113,6 @@ test-suite tests
     , tasty-golden
     , tasty-hunit
     , conduit
-    , mtl
 
 source-repository  head
   type: git
