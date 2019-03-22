@@ -3,9 +3,10 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE PartialTypeSignatures #-}
 module Bio.HTS.Utils
-    ( Orientation(..)
-    , BAMKey(..)
-    , markDupBy
+    ( markDupBy
+    , makeKey
+    , BAMKey
+    , Orientation
     ) where
 
 import           Conduit
@@ -106,7 +107,7 @@ markDupBy :: MonadIO m
 markDupBy bcFn = go (-1,-1) M.empty S.empty
   where
     go prev keyMap readBuf = await >>= \case
-        Nothing -> mapM_ (yield . fst) $ M.elems keyMap
+        Nothing -> mapM_ (\(_,_,x) -> yield x) readBuf
         Just bam -> markDup prev keyMap readBuf bam >>=
             (\(a,b,c) -> go a b c)
     markDup prev keyMap readBuf bam
@@ -115,7 +116,7 @@ markDupBy bcFn = go (-1,-1) M.empty S.empty
             "bad coordinate order: " ++ show (prev, cur)
         | isDup flg = return (cur, keyMap, readBuf')
         | otherwise = do
-            keyMap' <- addBamKey key bam keyMap
+            keyMap' <- addAndMark key bam keyMap
             update keyMap' readBuf' cur
       where
         readBuf' = readBuf S.|> (key, _loc1 singleKey, bam)
@@ -130,17 +131,15 @@ markDupBy bcFn = go (-1,-1) M.empty S.empty
         keyMap' = foldl' (\m (k,_,_) -> M.delete k m) keyMap exclude
         (exclude, kept) = S.breakl toKeep readBuf
         toKeep (key, pos,_) = _ref_id1 key == chr && pos + max_len > loc
-    addBamKey key bam keyMap = case M.insertLookupWithKey cmp key (bam, sc) keyMap of
-        (Nothing, m) -> return m
-        (Just old, m) -> do
-            let b = if sc > snd old then fst old else bam
-            liftIO $ setDup b
-            return m
+    addAndMark key bam keyMap = liftIO $ case M.lookup key keyMap of
+        Nothing -> return $ M.insert key (bam, sc) keyMap
+        Just (old, old_sc) -> if sc > old_sc -- || (sc == old_sc && queryName bam < queryName old)
+            then setDup old >> return (M.insert key (bam, sc) keyMap)
+            else setDup bam >> return keyMap
       where
         sc = case queryAuxData ('m', 's') bam of
             Just (AuxInt x) -> x + fromJust (sumQual 15 bam)
             _ -> fromJust $ sumQual 15 bam
-        cmp _ new old = if snd new > snd old then new else old
     max_len = 500
     isSorted (chr1, loc1) (chr2, loc2) = chr1 < chr2 ||
         (chr1 == chr2 && loc1 <= loc2)

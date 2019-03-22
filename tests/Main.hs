@@ -8,10 +8,11 @@ import Bio.HTS
 
 main :: IO ()
 main = defaultMain $ testGroup "Main"
-    [ tests ]
+    [ bamToSamTest
+    , markDupTest ]
 
-tests :: TestTree
-tests = goldenVsFile "BAM Read/Write Test" expect output $
+bamToSamTest :: TestTree
+bamToSamTest = goldenVsFile "BAM Read/Write Test" expect output $
     bamFileToSamFile input output
   where
     input = "tests/data/example.bam"
@@ -25,3 +26,17 @@ bamFileToSamFile input output = do
     header <- getBamHeader input
     runResourceT $ runConduit $ streamBam input .|
         mapC (showSam . bamToSam header) .| unlinesAsciiC .| sinkFile output
+
+markDupTest :: TestTree
+markDupTest = testGroup "Mark duplicates"
+    [ markDup "Single end" "tests/data/single_end_dedup.bam" 
+        "tests/data/single_end.bam" "dedup.bam" 
+    , markDup "Paired end" "tests/data/paired_end_dedup.bam" 
+        "tests/data/paired_end.bam" "dedup.bam" 
+    ]
+  where
+    markDup name expect input output = goldenVsFile name expect output $ do
+        header <- getBamHeader input
+        runResourceT $ runConduit $ streamBam input .|
+            markDupBy (const Nothing) .|
+            filterC (not . isDup . flag) .| sinkBam output header

@@ -1,5 +1,5 @@
 name:                HsHTSLib
-version:             1.9.1
+version:             1.9.2
 synopsis:            Bindings to htslib.
 description:         This package provides bindings to htslib, a library
                      for processing high throughput DNA sequencing data.
@@ -14,13 +14,18 @@ cabal-version:       >=1.10
 extra-source-files:
   README.md
   ChangeLog.md
+
+  -- C header files
   htslib-1.9/*.h
   htslib-1.9/htslib/*.h
   htslib-1.9/cram/*.h
   htslib-1.9/os/*.h
 
+  -- TEST DATA
   tests/data/example.bam
   tests/data/example.sam
+  tests/data/single_end.bam
+  tests/data/single_end_dedup.bam
 
 library
   ghc-options:         -Wall
