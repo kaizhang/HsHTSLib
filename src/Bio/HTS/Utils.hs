@@ -13,6 +13,7 @@ import qualified Data.Map.Strict as M
 import Data.List
 import Data.Maybe
 import qualified Data.Sequence as S
+import qualified Data.ByteString.Char8 as B
 
 import           Bio.HTS.BAM
 import           Bio.HTS.Types
@@ -21,28 +22,31 @@ data Orientation = F | R | FF | FR | RR | RF deriving (Eq, Ord, Show)
 
 data BAMKey = Single { _ref_id1 :: Int
                      , _loc1 :: Int
-                     , _orientation :: Orientation }
+                     , _orientation :: Orientation
+                     , _barcode :: Maybe B.ByteString }
             | Pair { _ref_id1 :: Int
                    , _ref_id2 :: Int
                    , _loc1 :: Int
                    , _loc2 :: Int
                    , _orientation :: Orientation
                    , _leftmost :: Bool
-                   }
+                   , _barcode :: Maybe B.ByteString }
             deriving (Eq, Ord, Show)
 
-makeKey :: BAM -> (BAMKey, BAMKey)
-makeKey bam = (single, pair)
+makeKey :: (BAM -> Maybe B.ByteString)   -- ^ Get Barcode
+        -> BAM
+        -> (BAMKey, BAMKey)
+makeKey fn bam = (single, pair)
   where
     single = Single ref1 (if isFwd1 then lloc1 else rloc1)
-        (if isFwd1 then F else R)
-    pair = Pair ref1 ref2 loc1 loc2 orientation isLeftMost
+        (if isFwd1 then F else R) bc
+    pair = Pair ref1 ref2 loc1 loc2 orientation isLeftMost bc
+    bc = fn bam
     ref1 = refId bam
     lloc1 = startLoc bam - fst clipped1 + 1
     rloc1 = endLoc bam + snd clipped1
     clipped1 = getClipped $ fromJust $ cigar bam
     isFwd1 = not $ isRC flg
-
     ref2 = mateRefId bam
     lloc2 = mateStartLoc bam - fst clipped2 + 1
     rloc2 = mateStartLoc bam + ciglen cig + snd clipped2
@@ -86,29 +90,20 @@ getClipped (CIGAR c) | length c <= 1 = (0,0)
         _ -> 0
 {-# INLINE getClipped #-}
 
--- Duplicates are determined by checking for matching keys.
--- The Key is comprised of:
--- Chromosome
--- Orientation (forward/reverse)
--- Unclipped Start(forward)/End(reverse)
--- Library
--- Rules:
--- Skip Unmapped Reads, they are not marked as duplicate
--- Reads whose mate is unmapped are treated as single-end
--- Mark a Single-End Read Duplicate (or remove it if configured to do so) if:
--- A paired-end record has the same key (even if the pair is not proper/the mate is not found)
--- -OR-
--- A single-end record has the same key and a higher base quality sum (sum of all base qualities in the record above --minBaseQual)
--- Mark both Paired-End Reads Duplicate if:
 
-
--- | Remove duplicated reads according to comparison function.
+-- | Remove duplicated reads. Duplicates are determined by
+-- checking for matching keys. The Key is comprised of:
+-- 1. Chromosome
+-- 2. Orientation (forward/reverse)
+-- 3. Unclipped Start(forward)/End(reverse)
+-- 4. Barcode
+--
 -- Keep the read that has a higher base quality sum (sum of all
 -- base qualities in the record above 15).
 markDupBy :: MonadIO m
-        => (BAM -> Int)
-        -> ConduitT BAM BAM m ()
-markDupBy scFn = go (-1,-1) M.empty S.empty
+          => (BAM -> Maybe B.ByteString)   -- ^ Get Barcode
+          -> ConduitT BAM BAM m ()
+markDupBy bcFn = go (-1,-1) M.empty S.empty
   where
     go prev keyMap readBuf = await >>= \case
         Nothing -> mapM_ (yield . fst) $ M.elems keyMap
@@ -127,7 +122,7 @@ markDupBy scFn = go (-1,-1) M.empty S.empty
         cur = (refId bam, startLoc bam)
         key | not (hasMultiSegments flg) || isNextUnmapped flg = singleKey
             | otherwise = pairKey
-        (singleKey, pairKey) = makeKey bam
+        (singleKey, pairKey) = makeKey bcFn bam
         flg = flag bam
     update keyMap readBuf (chr, loc) = mapM_ (\(_,_,b) -> yield b) exclude >>
         return ((chr, loc), keyMap', kept)
@@ -142,7 +137,9 @@ markDupBy scFn = go (-1,-1) M.empty S.empty
             liftIO $ setDup b
             return m
       where
-        sc = scFn bam
+        sc = case queryAuxData ('m', 's') bam of
+            Just (AuxInt x) -> x + fromJust (sumQual 15 bam)
+            _ -> fromJust $ sumQual 15 bam
         cmp _ new old = if snd new > snd old then new else old
     max_len = 500
     isSorted (chr1, loc1) (chr2, loc2) = chr1 < chr2 ||
