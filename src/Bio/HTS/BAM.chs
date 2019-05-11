@@ -3,8 +3,11 @@
 {-# LANGUAGE LambdaCase #-}
 
 module Bio.HTS.BAM
-    ( getBamHeader
+    ( -- * BAM file header
+      getBamHeader
     , getSortOrder
+
+      -- * BAM IO
     , streamBam
     , sinkBam
 

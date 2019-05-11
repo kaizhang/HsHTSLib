@@ -3,10 +3,14 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE PartialTypeSignatures #-}
 module Bio.HTS.Utils
-    ( markDupBy
-    , makeKey
+    ( -- * Mark duplicates
+      markDupBy
+    , Orientation(..)
     , BAMKey
-    , Orientation
+    , makeKey
+    
+      -- * Other utilities
+    , fragmentSizeDistr
     ) where
 
 import           Conduit
@@ -15,6 +19,8 @@ import Data.List
 import Data.Maybe
 import qualified Data.Sequence as S
 import qualified Data.ByteString.Char8 as B
+import qualified Data.Vector.Unboxed as U
+import qualified Data.Vector.Unboxed.Mutable as UM
 
 import           Bio.HTS.BAM
 import           Bio.HTS.Types
@@ -25,16 +31,17 @@ data BAMKey = Single { _ref_id1 :: Int
                      , _loc1 :: Int
                      , _orientation :: Orientation
                      , _barcode :: Maybe B.ByteString }
-            | Pair { _ref_id1 :: Int
-                   , _ref_id2 :: Int
-                   , _loc1 :: Int
-                   , _loc2 :: Int
+            | Pair { _ref_id1 :: Int  -- ^ ref id of this tag
+                   , _ref_id2 :: Int  -- ^ ref id of the paired tag
+                   , _loc1 :: Int     -- ^ location of this tag
+                   , _loc2 :: Int     -- ^ location of the paired tag
                    , _orientation :: Orientation
-                   , _leftmost :: Bool
+                   , _leftmost :: Bool   -- ^ Is this tag leftmost
                    , _barcode :: Maybe B.ByteString }
             deriving (Eq, Ord, Show)
 
-makeKey :: (BAM -> Maybe B.ByteString)   -- ^ Get Barcode
+-- | Create a pair of keys (single-end and paired-end).
+makeKey :: (BAM -> Maybe B.ByteString)   -- ^ Barcode extraction function
         -> BAM
         -> (BAMKey, BAMKey)
 makeKey fn bam = (single, pair)
@@ -94,6 +101,7 @@ getClipped (CIGAR c) | length c <= 1 = (0,0)
 
 -- | Remove duplicated reads. Duplicates are determined by
 -- checking for matching keys. The Key is comprised of:
+--
 -- 1. Chromosome
 -- 2. Orientation (forward/reverse)
 -- 3. Unclipped Start(forward)/End(reverse)
@@ -102,7 +110,7 @@ getClipped (CIGAR c) | length c <= 1 = (0,0)
 -- Keep the read that has a higher base quality sum (sum of all
 -- base qualities in the record above 15).
 markDupBy :: MonadIO m
-          => (BAM -> Maybe B.ByteString)   -- ^ Get Barcode
+          => (BAM -> Maybe B.ByteString)   -- ^ Barcode extraction function, if any.
           -> ConduitT BAM BAM m ()
 markDupBy bcFn = go (-1,-1) M.empty S.empty
   where
@@ -144,3 +152,20 @@ markDupBy bcFn = go (-1,-1) M.empty S.empty
     isSorted (chr1, loc1) (chr2, loc2) = chr1 < chr2 ||
         (chr1 == chr2 && loc1 <= loc2)
 {-# INLINE markDupBy #-}
+
+
+-- | Compute fragment size distribution from paired end BAM records.
+fragmentSizeDistr :: PrimMonad m
+                  => Int    -- ^ Largest fragment size
+                  -> ConduitT BAM o m (U.Vector Double)
+fragmentSizeDistr n = do
+    vec <- lift $ UM.replicate n 0
+    mapM_C $ f vec
+    vec' <- lift $ U.unsafeFreeze vec
+    return $ U.map (/ (U.sum vec')) vec'
+  where
+    f v x | s >= n = return ()
+          | otherwise = UM.modify v (+1) s
+      where
+        s = abs $ tLen x
+{-# INLINE fragmentSizeDistr #-}

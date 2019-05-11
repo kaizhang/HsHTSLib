@@ -27,8 +27,10 @@ import Bio.HTS.Internal
 -- | The BAM format.
 newtype BAM = BAM { unbam :: ForeignPtr Bam1 }
 
+-- | The BAM file header.
 newtype BAMHeader = BAMHeader {unbamHeader :: ForeignPtr BamHdr}
 
+-- | Convert bam file header to string.
 showBamHeader :: BAMHeader -> B.ByteString
 showBamHeader header = unsafePerformIO $
     withForeignPtr (unbamHeader header) $ \ptr -> do
@@ -45,10 +47,12 @@ data SortOrder = Unknown
 
 newtype CIGAR = CIGAR [(Int, Char)]
 
+-- | Convert CIGAR to string.
 cigar2String :: CIGAR -> B.ByteString
 cigar2String (CIGAR c) = B.concat $
     concatMap (\(i, x) -> [fromJust $ packDecimal i, B.singleton x]) c
 
+-- | Read CIGAR from string.
 string2Cigar :: B.ByteString -> CIGAR
 string2Cigar c = CIGAR $ go c
   where
@@ -74,6 +78,7 @@ data SAM = SAM
     , _sam_aux   :: [((Char,Char), AuxiliaryData)]
     }
 
+-- | Convert SAM to string.
 showSam :: SAM -> B.ByteString
 showSam SAM{..} = B.intercalate "\t" $
     [ _sam_qname, pack' _sam_flag, fromMaybe "*" _sam_rname, pack' _sam_pos
@@ -95,6 +100,7 @@ data AuxiliaryData = AuxChar Char
                    | AuxFloatArray [Float]
                    deriving (Show)
 
+-- | Convert aux data to string.
 showAuxiliaryData :: ((Char, Char), AuxiliaryData) -> B.ByteString
 showAuxiliaryData ((x1,x2), aux) = B.pack [x1,x2] <> aux'
   where
@@ -104,8 +110,3 @@ showAuxiliaryData ((x1,x2), aux) = B.pack [x1,x2] <> aux'
         AuxFloat x -> B.pack $ ":f:" <> show x
         AuxString x -> ":Z:" <> x
         _ -> error "Not implemented"
-
-{-
--- | SAM record flag
-newtype Flag = Flag Word16
--}
