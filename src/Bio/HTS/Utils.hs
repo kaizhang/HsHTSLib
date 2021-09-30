@@ -6,7 +6,7 @@ module Bio.HTS.Utils
     ( -- * Mark duplicates
       markDupBy
     , Orientation(..)
-    , BAMKey
+    , BAMKey(..)
     , makeKey
     , makeKeySingle
     , makeKeyPair
