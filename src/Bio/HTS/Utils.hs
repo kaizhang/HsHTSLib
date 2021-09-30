@@ -8,6 +8,8 @@ module Bio.HTS.Utils
     , Orientation(..)
     , BAMKey
     , makeKey
+    , makeKeySingle
+    , makeKeyPair
     
       -- * Other utilities
     , fragmentSizeDistr
@@ -39,6 +41,62 @@ data BAMKey = Single { _ref_id1 :: Int
                    , _leftmost :: Bool   -- ^ Is this tag leftmost
                    , _barcode :: Maybe B.ByteString }
             deriving (Eq, Ord, Show)
+
+-- | Generate fingerprint for single-end reads.
+makeKeySingle :: (BAM -> Maybe B.ByteString)   -- ^ Barcode extraction function
+              -> BAM
+              -> BAMKey
+makeKeySingle fn bam = Single ref1 (if isFwd1 then lloc1 else rloc1)
+    (if isFwd1 then F else R) $ fn bam
+  where
+    ref1 = refId bam
+    isFwd1 = not $ isRC flg
+    lloc1 = startLoc bam - fst clipped1 + 1
+    rloc1 = endLoc bam + snd clipped1
+    flg = flag bam
+    clipped1 = getClipped $ fromJust $ cigar bam
+{-# INLINE makeKeySingle #-}
+
+-- | Create a pair of keys (single-end and paired-end).
+makeKeyPair :: (BAM -> Maybe B.ByteString)   -- ^ Barcode extraction function
+            -> (BAM, BAM)
+            -> BAMKey
+makeKeyPair fn (bam1, bam2) = Pair ref1 ref2 loc1 loc2 orientation isLeftMost $ fn bam1
+  where
+    ref1 = refId bam1
+    lloc1 = startLoc bam1 - fst clipped1 + 1
+    rloc1 = endLoc bam1 + snd clipped1
+    clipped1 = getClipped $ fromJust $ cigar bam1
+    isFwd1 = not $ isRC $ flag bam1
+
+    ref2 = mateRefId bam2
+    lloc2 = startLoc bam2 - fst clipped2 + 1
+    rloc2 = endLoc bam2 + snd clipped2
+    clipped2 = getClipped $ fromJust $ cigar bam2
+    isFwd2 = not $ isRC $ flag bam2
+
+    isLeftMost
+        | ref1 /= ref2 = ref1 < ref2
+        | otherwise = if isFwd1 == isFwd2
+            then if isFwd1 then lloc1 <= lloc2 else rloc1 <= rloc2
+            else if isFwd1 then lloc1 <= rloc2 else rloc1 <= lloc2
+    orientation
+        | isLeftMost = if isFwd1 == isFwd2
+            then if isFwd1
+                then if isFirstSegment flg then FF else RR
+                else if isFirstSegment flg then RR else FF
+            else if isFwd1 then FR else RF
+        | otherwise = if isFwd1 == isFwd2
+            then if isFwd1
+                then if isFirstSegment flg then RR else FF
+                else if isFirstSegment flg then FF else RR
+            else if isFwd1 then RF else FR
+    loc1 | isFwd1 == isFwd2 = if isLeftMost then lloc1 else rloc1
+         | otherwise = if isFwd1 then lloc1 else rloc1
+    loc2 | isFwd1 == isFwd2 = if isLeftMost then rloc2 else lloc2
+         | otherwise = if isFwd1 then rloc2 else lloc2
+    flg = flag bam1
+
 
 -- | Create a pair of keys (single-end and paired-end).
 makeKey :: (BAM -> Maybe B.ByteString)   -- ^ Barcode extraction function
